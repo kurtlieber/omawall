@@ -1,11 +1,13 @@
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
+import Quickshell.Hyprland
 import QtQuick
 import QtQuick.Effects
 import QtQuick.Shapes
 import qs.Commons
 import qs.Ui
+import "Fit.js" as Fit
 
 // Cloned from omarchy.background and extended with folder mode.
 //
@@ -34,7 +36,7 @@ Item {
 
   // ------------------------------------------------------------- settings
 
-  readonly property string pluginId: (manifest && manifest.id) || "matjam.omawall"
+  readonly property string pluginId: (manifest && manifest.id) || "klieber.omawall"
   readonly property var settings: lookupSettings(shell ? shell.shellConfig : null, pluginId)
 
   readonly property bool perDisplay: setting("perDisplay", true) === true
@@ -65,6 +67,10 @@ Item {
   // folder is edited and a rescan every time anything anywhere is edited.
   readonly property string displayConfigKey: JSON.stringify(displayConfig)
 
+  function defaultCollection() {
+    return home + "/source/wallpapers"
+  }
+
   readonly property var defaultDisplayConfig: ({
     folder: "", recursive: true, mode: "shuffle", pinned: "", scaling: "zoom"
   })
@@ -88,8 +94,12 @@ Item {
     }
     var mode = String(pick("mode", "shuffle"))
     var scaling = String(pick("scaling", "zoom"))
+    var rawFolder = pick("folder", setting("folder", null))
+    var folder = (rawFolder === null || rawFolder === undefined)
+      ? defaultCollection()
+      : expandHome(String(rawFolder).trim())
     return {
-      folder: expandHome(String(pick("folder", setting("folder", ""))).trim()),
+      folder: folder,
       recursive: pick("recursive", setting("recursive", true)) === true,
       mode: mode === "single" ? "single" : "shuffle",
       pinned: expandHome(String(pick("pinned", "")).trim()),
@@ -298,6 +308,14 @@ Item {
   // poolKey -> [paths]. One entry per distinct folder in use, so two displays
   // pointed at the same folder share both the pool and the deal queue below.
   property var pools: ({})
+  // path -> [width, height] from identify. Missing means skip (undecodable).
+  property var imageDims: ({})
+  property bool dimsLoaded: false
+
+  // screenName -> { "1": path, ... "10": path }
+  property var slotMap: ({})
+  property bool slotsLoaded: false
+  readonly property string slotsPath: stateHome + "/klieber.omawall/slots.json"
 
   function poolFor(key) { return pools[key] || [] }
 
@@ -336,6 +354,8 @@ Item {
     if (scanProc.running) scanProc.running = false
     pools = ({})
     dealQueues = ({})
+    imageDims = ({})
+    dimsLoaded = false
     poolLoaded = false
     if (!hasFolder()) return
     scanQueue = distinctPoolKeys()
@@ -345,8 +365,7 @@ Item {
   function drainScans() {
     if (scanProc.running) return
     if (!scanQueue.length) {
-      poolLoaded = true
-      if (hasFolder()) shuffle(displayedIsEmpty())
+      loadDims()
       return
     }
     var key = scanQueue[0]
@@ -380,9 +399,249 @@ Item {
     onExited: root.drainScans()
   }
 
+  function allPoolPaths() {
+    var out = []
+    var seen = ({})
+    for (var key in pools) {
+      var list = poolFor(key)
+      for (var i = 0; i < list.length; i++) {
+        if (seen[list[i]]) continue
+        seen[list[i]] = true
+        out.push(list[i])
+      }
+    }
+    return out
+  }
+
+  function loadDims() {
+    var paths = allPoolPaths()
+    if (!paths.length) {
+      imageDims = ({})
+      dimsLoaded = true
+      afterPoolReady()
+      return
+    }
+    if (!sourceDir) {
+      imageDims = ({})
+      dimsLoaded = true
+      afterPoolReady()
+      return
+    }
+    dimsProc.command = [sourceDir + "/bin/omawall-fit", "dims"].concat(paths)
+    dimsProc.running = true
+  }
+
+  Process {
+    id: dimsProc
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        var parsed = ({})
+        try { parsed = JSON.parse(String(text || "{}")) } catch (e) { parsed = ({}) }
+        root.imageDims = parsed && typeof parsed === "object" ? parsed : ({})
+        root.dimsLoaded = true
+        root.afterPoolReady()
+      }
+    }
+    onExited: function(code) {
+      if (code !== 0 && !root.dimsLoaded) {
+        root.imageDims = ({})
+        root.dimsLoaded = true
+        root.afterPoolReady()
+      }
+    }
+  }
+
+  function afterPoolReady() {
+    poolLoaded = true
+    if (!hasFolder()) return
+    ensureSlots()
+    applyVisibleSlots(true)
+  }
+
   function displayedIsEmpty() {
     for (var k in displayedMap) if (displayedMap[k]) return false
     return true
+  }
+
+  function numberedWorkspace(id) {
+    return id >= 1 && id <= 10
+  }
+
+  function workspaceLabel(id) {
+    if (id === 10) return "0"
+    return String(id)
+  }
+
+  function screenForName(name) {
+    var screens = Quickshell.screens || []
+    for (var i = 0; i < screens.length; i++)
+      if (String(screens[i].name) === name) return screens[i]
+    return null
+  }
+
+  function screenBox(name) {
+    var screen = screenForName(name)
+    if (!screen) return { w: 0, h: 0 }
+    var mon = Hyprland.monitorFor(screen)
+    if (mon && Number(mon.width) > 0 && Number(mon.height) > 0)
+      return { w: Number(mon.width), h: Number(mon.height) }
+    return { w: Number(screen.width) || 0, h: Number(screen.height) || 0 }
+  }
+
+  function workspaceIdForScreen(name) {
+    var screen = screenForName(name)
+    if (!screen) return 0
+    var mon = Hyprland.monitorFor(screen)
+    if (!mon || !mon.activeWorkspace) return 0
+    return Number(mon.activeWorkspace.id) || 0
+  }
+
+  function visibleWorkspaces() {
+    var names = screenNames()
+    var out = ({})
+    for (var i = 0; i < names.length; i++)
+      out[names[i]] = workspaceIdForScreen(names[i])
+    return out
+  }
+
+  function pathFits(path, screenName) {
+    path = String(path || "")
+    if (!path || badImages[path]) return false
+    var d = imageDims[path]
+    if (!d || d.length < 2) return false
+    var box = screenBox(screenName)
+    if (box.w <= 0 || box.h <= 0) return false
+    return Fit.fits(Number(d[0]), Number(d[1]), box.w, box.h)
+  }
+
+  function slotPath(screenName, ws) {
+    var row = slotMap[screenName]
+    if (!row || typeof row !== "object") return ""
+    return String(row[String(ws)] || "")
+  }
+
+  function setSlot(screenName, ws, path) {
+    var next = ({})
+    for (var n in slotMap) {
+      var copy = ({})
+      for (var k in slotMap[n]) copy[k] = slotMap[n][k]
+      next[n] = copy
+    }
+    if (!next[screenName]) next[screenName] = ({})
+    next[screenName][String(ws)] = String(path || "")
+    slotMap = next
+  }
+
+  function persistSlots() {
+    slotSaveTimer.restart()
+  }
+
+  function flushSlots() {
+    if (!slotsLoaded) return
+    slotFile.setText(JSON.stringify({ version: 1, slots: slotMap }, null, 2) + "\n")
+  }
+
+  function loadSlotJson(raw) {
+    var parsed = null
+    try { parsed = JSON.parse(String(raw || "")) } catch (e) { parsed = null }
+    if (parsed && parsed.slots && typeof parsed.slots === "object")
+      slotMap = parsed.slots
+    else
+      slotMap = ({})
+    slotsLoaded = true
+    if (poolLoaded && hasFolder()) {
+      ensureSlots()
+      applyVisibleSlots(true)
+    }
+  }
+
+  function slotStillValid(path, screenName) {
+    if (!path) return false
+    if (badImages[path]) return false
+    var inPool = false
+    for (var key in pools) {
+      if (poolFor(key).indexOf(path) !== -1) { inPool = true; break }
+    }
+    if (!inPool) return false
+    return pathFits(path, screenName)
+  }
+
+  function usedSlotPaths() {
+    var out = []
+    for (var n in slotMap) {
+      var row = slotMap[n]
+      if (!row) continue
+      for (var k in row) {
+        var p = String(row[k] || "")
+        if (p && out.indexOf(p) === -1) out.push(p)
+      }
+    }
+    return out
+  }
+
+  function dealFitting(key, screenName, avoid) {
+    var avoidList = Array.isArray(avoid) ? avoid.slice() : (avoid ? [avoid] : [])
+    for (var attempt = 0; attempt < 64; attempt++) {
+      var drawn = dealNext(key, 1, avoidList)[0] || ""
+      if (!drawn) return ""
+      if (pathFits(drawn, screenName) && avoidList.indexOf(drawn) === -1)
+        return drawn
+      // Unsuitable for this screen: leave it out of this slot but don't
+      // burn the rest of the queue forever — skip and keep looking.
+    }
+    return ""
+  }
+
+  function ensureSlots() {
+    if (!poolLoaded || !dimsLoaded || !slotsLoaded) return
+    if (!hasFolder()) return
+    var names = screenNames()
+    var avoid = usedSlotPaths()
+    var changed = false
+    for (var i = 0; i < names.length; i++) {
+      var name = names[i]
+      var cfg = configFor(name)
+      var key = poolKeyFor(name)
+      for (var ws = 1; ws <= 10; ws++) {
+        var cur = slotPath(name, ws)
+        if (slotStillValid(cur, name)) {
+          if (avoid.indexOf(cur) === -1) avoid.push(cur)
+          continue
+        }
+        var chosen = ""
+        if (cfg.mode === "single" && cfg.pinned !== "" && pathFits(cfg.pinned, name))
+          chosen = cfg.pinned
+        else if (key !== "")
+          chosen = dealFitting(key, name, avoid)
+        setSlot(name, ws, chosen)
+        if (chosen && avoid.indexOf(chosen) === -1) avoid.push(chosen)
+        changed = true
+      }
+    }
+    if (changed) persistSlots()
+  }
+
+  function applyVisibleSlots(instant) {
+    var names = screenNames()
+    var picks = ({})
+    for (var i = 0; i < names.length; i++) {
+      var name = names[i]
+      var ws = workspaceIdForScreen(name)
+      if (!numberedWorkspace(ws)) continue
+      var path = slotPath(name, ws)
+      if (path) picks[name] = path
+    }
+    var empty = true
+    for (var k in picks) { empty = false; break }
+    if (empty) return
+    applyPerScreen(picks, instant === true)
+    syncCurrentLink(picks)
+  }
+
+  function onWorkspaceEvent() {
+    if (!hasFolder() || !poolLoaded) return
+    applyVisibleSlots(true)
   }
 
   // Fisher-Yates over a copy, so a reshuffle never reorders `pool` itself.
@@ -530,47 +789,38 @@ Item {
     var picks = ({})
     if (!names.length) return picks
 
-    // What is on screen now, kept out of the head of a refilled queue.
-    var avoid = []
+    var avoid = usedSlotPaths()
     for (var a = 0; a < names.length; a++) {
       var showing = String(displayedMap[names[a]] || "")
       if (showing && avoid.indexOf(showing) === -1) avoid.push(showing)
     }
 
-    // Group the shuffling displays by pool; pin the single ones as we go.
-    var groups = ({})
-    var order = []
+    var mirror = ""
     for (var i = 0; i < names.length; i++) {
       var name = names[i]
+      var ws = workspaceIdForScreen(name)
+      if (!numberedWorkspace(ws)) continue
       var cfg = configFor(name)
+      var chosen = ""
       if (cfg.mode === "single") {
-        if (cfg.pinned !== "") picks[name] = cfg.pinned
-        continue
+        if (cfg.pinned !== "" && pathFits(cfg.pinned, name)) chosen = cfg.pinned
+        else chosen = slotPath(name, ws)
+      } else {
+        var key = poolKeyFor(name)
+        if (key === "") continue
+        if (!perDisplay && mirror !== "") {
+          chosen = pathFits(mirror, name) ? mirror : dealFitting(key, name, avoid)
+        } else {
+          chosen = dealFitting(key, name, avoid)
+          if (!perDisplay) mirror = chosen
+        }
       }
-      var key = poolKeyFor(name)
-      if (key === "") continue
-      if (!groups[key]) { groups[key] = []; order.push(key) }
-      groups[key].push(name)
+      if (!chosen) continue
+      picks[name] = chosen
+      setSlot(name, ws, chosen)
+      if (avoid.indexOf(chosen) === -1) avoid.push(chosen)
     }
-
-    for (var g = 0; g < order.length; g++) {
-      var poolKey = order[g]
-      var members = groups[poolKey]
-      if (!usablePoolFor(poolKey).length) continue
-
-      // perDisplay only has meaning within a group: it asks whether these
-      // displays mirror one image or each get their own.
-      if (!perDisplay) {
-        var one = dealNext(poolKey, 1, avoid)[0] || ""
-        if (!one) continue
-        for (var m = 0; m < members.length; m++) picks[members[m]] = one
-        continue
-      }
-
-      var dealt = dealNext(poolKey, members.length, avoid)
-      if (!dealt.length) continue
-      for (var d = 0; d < members.length; d++) picks[members[d]] = dealt[d % dealt.length]
-    }
+    persistSlots()
     return picks
   }
 
@@ -580,8 +830,11 @@ Item {
     var picks = pickForScreens()
     var empty = true
     for (var k in picks) { empty = false; break }
-    if (empty) return
-    applyPerScreen(picks, instant === true)
+    if (empty) {
+      applyVisibleSlots(true)
+      return
+    }
+    applyPerScreen(picks, true)
     syncCurrentLink(picks)
     topUpQueues(picks)
     if (autoTheme) requestTheme(primaryPick(picks))
@@ -637,25 +890,18 @@ Item {
     if (!affected.length) return
 
     for (var j = 0; j < affected.length; j++) {
-      // Drawn from the same queue as an ordinary deal, so a decode failure
-      // costs the pass one position rather than reaching outside the rotation.
-      var chosen = ""
-      var drawn = ""
       var key = poolKeyFor(affected[j])
-      for (var attempt = 0; attempt < 8; attempt++) {
-        drawn = dealNext(key, 1, path)[0] || ""
-        if (!drawn) break
-        if (!perDisplay || !inUse[drawn]) { chosen = drawn; break }
-      }
-      // Fewer usable images than displays: repeating one beats a black screen.
-      if (!chosen) chosen = drawn
+      var avoid = [path]
+      for (var u in inUse) avoid.push(u)
+      var chosen = dealFitting(key, affected[j], avoid)
       if (!chosen) return
       picks[affected[j]] = chosen
       inUse[chosen] = true
+      var ws = workspaceIdForScreen(affected[j])
+      if (numberedWorkspace(ws)) setSlot(affected[j], ws, chosen)
     }
+    persistSlots()
 
-    // A replacement that also fails to decode lands back here, but each pass
-    // removes one path from the pool, so the retries are bounded by its size.
     applyPerScreen(picks, true)
     syncCurrentLink(picks)
     topUpQueues(picks)
@@ -798,7 +1044,7 @@ Item {
       if (picks[n] !== displayedMap[n]) changed = true
     }
     if (!changed && !instant) return
-    beginTransition(displayedMap, picks, nextOld, instant === true || displayedIsEmpty())
+    beginTransition(displayedMap, picks, nextOld, true)
   }
 
   // Stock single-image path: fill every screen with the same value.
@@ -1036,7 +1282,9 @@ Item {
         autoTheme: root.autoTheme,
         themeMode: root.themeMode,
         primaryDisplay: root.primaryScreenName(),
-        displays: root.screenNames()
+        displays: root.screenNames(),
+        workspaces: root.visibleWorkspaces(),
+        slots: root.slotMap
       })
     }
   }
@@ -1108,14 +1356,54 @@ Item {
 
   Connections {
     target: Quickshell
-    // A newly-plugged display has no pick yet; deal it one.
     function onScreensChanged() {
-      if (root.hasFolder()) root.shuffle(true)
-      else root.refreshBackground()
+      if (root.hasFolder()) {
+        root.ensureSlots()
+        root.applyVisibleSlots(true)
+      } else {
+        root.refreshBackground()
+      }
     }
   }
 
+  Connections {
+    target: Hyprland
+    function onRawEvent(event) {
+      var n = String(event.name || "")
+      if (n === "workspace" || n === "workspacev2" || n === "focusedmon"
+          || n === "moveworkspace" || n === "createworkspace"
+          || n === "destroyworkspace")
+        root.onWorkspaceEvent()
+    }
+    function onFocusedWorkspaceChanged() { root.onWorkspaceEvent() }
+    function onFocusedMonitorChanged() { root.onWorkspaceEvent() }
+  }
+
+  Timer {
+    id: slotSaveTimer
+    interval: 200
+    repeat: false
+    onTriggered: root.flushSlots()
+  }
+
+  Process {
+    id: mkdirSlots
+    command: ["mkdir", "-p", root.stateHome + "/klieber.omawall"]
+    onExited: slotFile.reload()
+  }
+
+  FileView {
+    id: slotFile
+    path: root.slotsPath
+    watchChanges: false
+    atomicWrites: true
+    printErrors: false
+    onLoaded: root.loadSlotJson(text())
+    onLoadFailed: root.loadSlotJson("")
+  }
+
   Component.onCompleted: {
+    mkdirSlots.running = true
     if (hasFolder()) rescan()
     else refreshBackground()
   }

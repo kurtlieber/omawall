@@ -16,8 +16,8 @@ import qs.Ui
 // change reaches the wallpaper without a restart.
 Panel {
   id: root
-  moduleName: "matjam.omawall"
-  ipcTarget: "matjam.omawall"
+  moduleName: "klieber.omawall"
+  ipcTarget: "klieber.omawall"
   manageIpc: false
 
   implicitWidth: button.implicitWidth
@@ -221,6 +221,7 @@ Panel {
   property int poolSize: -1
   property var screenPicks: ({})
   property var nextPicks: ({})
+  property var visibleWorkspaces: ({})
 
   property int skipped: 0
 
@@ -365,6 +366,7 @@ Panel {
         root.skipped = Number(data.skipped || 0)
         root.screenPicks = data.screens || ({})
         root.nextPicks = data.next || ({})
+        root.visibleWorkspaces = data.workspaces || ({})
         root.displays = Array.isArray(data.displays) ? data.displays : []
         root.resolvedPrimary = String(data.primaryDisplay || "")
       }
@@ -801,6 +803,15 @@ Panel {
           }
 
           Text {
+            width: parent.width
+            text: "Edits the numbered workspace currently visible on that display (1–9, 0). Scratchpads keep whatever is already showing."
+            color: Qt.darker(root.fg, 1.5)
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+            wrapMode: Text.WordWrap
+          }
+
+          Text {
             visible: !root.perDisplayConfig
             width: parent.width
             text: "All displays"
@@ -823,7 +834,7 @@ Panel {
               id: folderField
               width: parent.width - browseButton.implicitWidth - parent.spacing
               foreground: root.fg
-              placeholderText: "~/Pictures/wallpapers"
+              placeholderText: "~/source/wallpapers"
               // Only a keystroke counts as an edit. Assigning text from the
               // setting must not arm the write-back.
               onTextChanged: if (activeFocus) root.folderEdited = true
@@ -1030,7 +1041,7 @@ Panel {
 
           Text {
             width: parent.width
-            text: "Displays set to Single keep their image and are left alone."
+            text: "Next, the timer, and wake shuffle change the workspace you are looking at. Other numbered workspaces keep their pictures. Displays set to Single pin the visible workspace."
             color: Qt.darker(root.fg, 1.6)
             font.family: root.fontFamily
             font.pixelSize: Style.font.caption
@@ -1133,14 +1144,20 @@ Panel {
               var out = []
               for (var name in root.screenPicks) {
                 var p = String(root.screenPicks[name] || "")
-                out.push({ screen: name, file: p.substring(p.lastIndexOf("/") + 1) })
+                var ws = Number(root.visibleWorkspaces[name] || 0)
+                var label = ws === 10 ? "0" : (ws > 0 ? String(ws) : "?")
+                out.push({
+                  screen: name,
+                  file: p.substring(p.lastIndexOf("/") + 1),
+                  workspace: label
+                })
               }
               return out
             }
             Text {
               required property var modelData
               width: column.width
-              text: modelData.screen + "  ·  " + modelData.file
+              text: modelData.screen + "  ·  ws " + modelData.workspace + "  ·  " + modelData.file
               color: Qt.darker(root.fg, 1.6)
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption

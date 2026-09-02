@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
-  "id": "matjam.omawall",
+  "id": "klieber.omawall",
   "name": "omawall",
-  "version": "1.4.0",
-  "author": "Nathan Ollerenshaw (matjam)",
-  "description": "Replaces the Omarchy background service with a folder-backed one. Each display can have its own folder, shuffle through it or stay pinned to one image, and scale it to taste. Can also generate an Omarchy theme from the primary display's wallpaper, so the whole desktop tracks the picture behind it.",
+  "version": "1.5.0",
+  "author": "klieber (fork of matjam/omawall)",
+  "description": "Folder-backed Omarchy backgrounds with per-workspace slots and a fit filter (no upscale, aspect buckets). Shuffle or pin per display, scale to taste, optional theme-from-wallpaper.",
   "license": "MIT",
   "homepage": "https://github.com/matjam/omawall",
   "repository": "https://github.com/matjam/omawall",
@@ -31,7 +31,7 @@
       "shuffleOnWake": false,
       "autoTheme": false,
       "themeMode": "dark",
-      "folder": "",
+      "folder": "~/source/wallpapers",
       "recursive": true
     },
     "schema": [
@@ -97,7 +97,7 @@
         "key": "folder",
         "type": "path",
         "label": "Wallpaper folder (legacy)",
-        "defaultValue": "",
+        "defaultValue": "~/source/wallpapers",
         "description": "Read only when displayConfig has no entry, so settings written before per-display support keep working. The first panel edit folds it into displayConfig."
       },
       {

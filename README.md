@@ -4,6 +4,19 @@ Folder-backed wallpapers for [Omarchy](https://omarchy.org) Quattro. Every
 display gets its own image, its own settings if you want them, and your whole
 desktop theme can follow along.
 
+This tree is **klieber.omawall**, a fork of [matjam/omawall](https://github.com/matjam/omawall).
+It keeps every upstream feature and adds:
+
+- **Per-workspace slots** — numbered workspaces 1–10 (0 is workspace 10) each
+  remember the picture last shown on that display. Next / timer / wake / pin
+  edit the workspace you are looking at. Scratch/special workspaces have no
+  slot.
+- **Fit filter** — shuffle and fill skip images that would upscale, and skip
+  badly wrong aspect (desk: 16:9 only; travel ultrawide only; laptop may crop
+  any bucket if the pixels cover).
+- **Instant paint** — no reveal wipe on workspace switch or next.
+- **Default folder** `~/source/wallpapers`.
+
 > **Written by Claude**, Anthropic's coding agent. Tested on real hardware, but
 > tested isn't proven — and Omarchy plugins run unsandboxed inside your shell
 > process, with your permissions. Read the source first. No promises about
@@ -33,7 +46,7 @@ install it and decide later.
 ## Install
 
 ```bash
-omarchy plugin add https://github.com/matjam/omawall.git --enable
+omarchy plugin add ~/source/omawall --enable --yes
 ```
 
 Put the widget on the `right` when prompted. This disables the built-in
@@ -51,8 +64,8 @@ Everything else works without it, and the panel tells you when it's missing.
 Add it whenever; nothing needs reinstalling.
 
 ```bash
-omarchy plugin update matjam.omawall    # update
-omarchy plugin remove matjam.omawall    # remove, leaves nothing behind
+omarchy plugin update klieber.omawall    # pulls from this clone
+omarchy plugin remove klieber.omawall    # remove, leaves nothing behind
 ```
 
 ## Settings

@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.5.0 (klieber fork)
+
+* Per-workspace slots (numbered 1–10) remembered per display across reboot
+* Fit filter: no upscale; desk is 16:9, travel is ultrawide, laptop accepts any bucket that covers
+* Instant paint (no reveal wipe)
+* Default folder `~/source/wallpapers`
+* Plugin id `klieber.omawall`
+
 ## [1.4.0](https://github.com/matjam/omawall/compare/v1.3.0...v1.4.0) (2026-08-12)
 
 
