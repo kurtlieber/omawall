@@ -7,10 +7,11 @@ desktop theme can follow along.
 This tree is **klieber.omawall**, a fork of [matjam/omawall](https://github.com/matjam/omawall).
 It keeps every upstream feature and adds:
 
-- **Per-workspace slots** — numbered workspaces 1–10 (0 is workspace 10) each
+- **Per-workspace slots** — optional (Shuffling tab: **Different wallpaper per
+  workspace**, on by default). Numbered workspaces 1–10 (0 is workspace 10) each
   remember the picture last shown on that display. Next / timer / wake / pin
   edit the workspace you are looking at. Scratch/special workspaces have no
-  slot.
+  slot. Off: every workspace on a display shows the same picture.
 - **Fit filter** — shuffle and fill skip images that would upscale, and skip
   badly wrong aspect (desk: 16:9 only; travel ultrawide only; laptop may crop
   any bucket if the pixels cover).

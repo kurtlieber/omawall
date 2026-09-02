@@ -40,6 +40,7 @@ Item {
   readonly property var settings: lookupSettings(shell ? shell.shellConfig : null, pluginId)
 
   readonly property bool perDisplay: setting("perDisplay", true) === true
+  readonly property bool perWorkspace: setting("perWorkspace", true) === true
   readonly property int intervalSec: Math.max(0, Number(setting("intervalSec", 0)) || 0)
 
   // ---------------------------------------------------- per-display config
@@ -455,8 +456,12 @@ Item {
   function afterPoolReady() {
     poolLoaded = true
     if (!hasFolder()) return
-    ensureSlots()
-    applyVisibleSlots(true)
+    if (perWorkspace) {
+      ensureSlots()
+      applyVisibleSlots(true)
+    } else {
+      shuffle(true)
+    }
   }
 
   function displayedIsEmpty() {
@@ -594,6 +599,7 @@ Item {
   }
 
   function ensureSlots() {
+    if (!perWorkspace) return
     if (!poolLoaded || !dimsLoaded || !slotsLoaded) return
     if (!hasFolder()) return
     var names = screenNames()
@@ -623,6 +629,7 @@ Item {
   }
 
   function applyVisibleSlots(instant) {
+    if (!perWorkspace) return
     var names = screenNames()
     var picks = ({})
     for (var i = 0; i < names.length; i++) {
@@ -640,7 +647,22 @@ Item {
   }
 
   function onWorkspaceEvent() {
-    if (!hasFolder() || !poolLoaded) return
+    if (!perWorkspace || !hasFolder() || !poolLoaded) return
+    applyVisibleSlots(true)
+  }
+
+  onPerWorkspaceChanged: {
+    if (!hasFolder() || !poolLoaded || !slotsLoaded) return
+    if (!perWorkspace) return
+    var names = screenNames()
+    for (var i = 0; i < names.length; i++) {
+      var name = names[i]
+      var ws = workspaceIdForScreen(name)
+      var showing = String(displayedMap[name] || "")
+      if (numberedWorkspace(ws) && showing) setSlot(name, ws, showing)
+    }
+    persistSlots()
+    ensureSlots()
     applyVisibleSlots(true)
   }
 
@@ -799,12 +821,12 @@ Item {
     for (var i = 0; i < names.length; i++) {
       var name = names[i]
       var ws = workspaceIdForScreen(name)
-      if (!numberedWorkspace(ws)) continue
+      if (perWorkspace && !numberedWorkspace(ws)) continue
       var cfg = configFor(name)
       var chosen = ""
       if (cfg.mode === "single") {
         if (cfg.pinned !== "" && pathFits(cfg.pinned, name)) chosen = cfg.pinned
-        else chosen = slotPath(name, ws)
+        else if (perWorkspace) chosen = slotPath(name, ws)
       } else {
         var key = poolKeyFor(name)
         if (key === "") continue
@@ -817,7 +839,7 @@ Item {
       }
       if (!chosen) continue
       picks[name] = chosen
-      setSlot(name, ws, chosen)
+      if (perWorkspace && numberedWorkspace(ws)) setSlot(name, ws, chosen)
       if (avoid.indexOf(chosen) === -1) avoid.push(chosen)
     }
     persistSlots()
@@ -1283,6 +1305,7 @@ Item {
         themeMode: root.themeMode,
         primaryDisplay: root.primaryScreenName(),
         displays: root.screenNames(),
+        perWorkspace: root.perWorkspace,
         workspaces: root.visibleWorkspaces(),
         slots: root.slotMap
       })
@@ -1357,11 +1380,15 @@ Item {
   Connections {
     target: Quickshell
     function onScreensChanged() {
-      if (root.hasFolder()) {
+      if (!root.hasFolder()) {
+        root.refreshBackground()
+        return
+      }
+      if (root.perWorkspace) {
         root.ensureSlots()
         root.applyVisibleSlots(true)
       } else {
-        root.refreshBackground()
+        root.shuffle(true)
       }
     }
   }

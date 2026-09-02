@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.6.0 (klieber fork)
+
+* Toggle **Different wallpaper per workspace** (Shuffling tab). Off: one picture per display.
+
 ## 1.5.0 (klieber fork)
 
 * Per-workspace slots (numbered 1–10) remembered per display across reboot

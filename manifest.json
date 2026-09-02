@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "klieber.omawall",
   "name": "omawall",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "author": "klieber (fork of matjam/omawall)",
   "description": "Folder-backed Omarchy backgrounds with per-workspace slots and a fit filter (no upscale, aspect buckets). Shuffle or pin per display, scale to taste, optional theme-from-wallpaper.",
   "license": "MIT",
@@ -27,6 +27,7 @@
       "perDisplayConfig": false,
       "displayConfig": {},
       "perDisplay": true,
+      "perWorkspace": true,
       "intervalSec": 0,
       "shuffleOnWake": false,
       "autoTheme": false,
@@ -62,6 +63,13 @@
         "label": "Different image per display",
         "defaultValue": true,
         "description": "Within a group of displays sharing a folder, off mirrors one image across them."
+      },
+      {
+        "key": "perWorkspace",
+        "type": "boolean",
+        "label": "Different wallpaper per workspace",
+        "defaultValue": true,
+        "description": "On: each numbered workspace keeps its own picture. Off: every workspace on a display shows the same picture."
       },
       {
         "key": "intervalSec",

@@ -24,6 +24,7 @@ Panel {
   implicitHeight: button.implicitHeight
 
   readonly property bool perDisplay: setting("perDisplay", true) === true
+  readonly property bool perWorkspace: setting("perWorkspace", true) === true
   readonly property int intervalSec: Math.max(0, Number(setting("intervalSec", 0)) || 0)
   readonly property bool shuffleOnWake: setting("shuffleOnWake", false) === true
   readonly property bool autoTheme: setting("autoTheme", false) === true
@@ -803,6 +804,7 @@ Panel {
           }
 
           Text {
+            visible: root.perWorkspace
             width: parent.width
             text: "Edits the numbered workspace currently visible on that display (1–9, 0). Scratchpads keep whatever is already showing."
             color: Qt.darker(root.fg, 1.5)
@@ -1027,6 +1029,16 @@ Panel {
           }
 
           Toggle {
+            width: parent.width
+            label: "Different wallpaper per workspace"
+            description: "On: each numbered workspace keeps its own picture. Off: every workspace on a display shows the same picture."
+            checked: root.perWorkspace
+            foreground: root.fg
+            fontFamily: root.fontFamily
+            onClicked: root.persist("perWorkspace", !root.perWorkspace)
+          }
+
+          Toggle {
             // With each display configured separately this has no meaning:
             // every display already draws from its own folder.
             visible: !root.perDisplayConfig
@@ -1040,6 +1052,7 @@ Panel {
           }
 
           Text {
+            visible: root.perWorkspace
             width: parent.width
             text: "Next, the timer, and wake shuffle change the workspace you are looking at. Other numbered workspaces keep their pictures. Displays set to Single pin the visible workspace."
             color: Qt.darker(root.fg, 1.6)
@@ -1157,7 +1170,9 @@ Panel {
             Text {
               required property var modelData
               width: column.width
-              text: modelData.screen + "  ·  ws " + modelData.workspace + "  ·  " + modelData.file
+              text: root.perWorkspace
+                ? (modelData.screen + "  ·  ws " + modelData.workspace + "  ·  " + modelData.file)
+                : (modelData.screen + "  ·  " + modelData.file)
               color: Qt.darker(root.fg, 1.6)
               font.family: root.fontFamily
               font.pixelSize: Style.font.caption
