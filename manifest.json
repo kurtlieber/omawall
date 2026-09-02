@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "klieber.omawall",
   "name": "omawall",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "author": "klieber (fork of matjam/omawall)",
   "description": "Folder-backed Omarchy backgrounds with per-workspace slots and a fit filter (no upscale, aspect buckets). Shuffle or pin per display, scale to taste, optional theme-from-wallpaper.",
   "license": "MIT",

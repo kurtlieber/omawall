@@ -176,7 +176,11 @@ Item {
   // re-evaluate, and QML gives no ordering guarantee between a dependent
   // binding and an onXChanged handler, so a handler reading it could still see
   // the pre-change value. hasFolder() reads the settings directly.
-  readonly property bool folderMode: hasFolder()
+  //
+  // A configured folder with zero usable images must not count as folder
+  // mode: we still own the layer, and an empty Image is a black desktop.
+  // Fall back to the theme background symlink in that case.
+  readonly property bool folderMode: hasFolder() && poolLoaded && usablePool().length > 0
 
   // True when omawall owns the wallpaper on any display, whether that display
   // shuffles a folder or is pinned to one image.
@@ -187,6 +191,10 @@ Item {
       if (c.folder !== "" || c.pinned !== "") return true
     }
     return false
+  }
+
+  function hasUsableImages() {
+    return poolLoaded && usablePool().length > 0
   }
 
   // True when at least one display would actually change. A display in single
@@ -455,13 +463,21 @@ Item {
 
   function afterPoolReady() {
     poolLoaded = true
-    if (!hasFolder()) return
+    if (!hasFolder()) {
+      applyThemeFromLink()
+      return
+    }
+    if (!hasUsableImages()) {
+      applyThemeFromLink()
+      return
+    }
     if (perWorkspace) {
       ensureSlots()
       applyVisibleSlots(true)
     } else {
       shuffle(true)
     }
+    if (displayedIsEmpty()) applyThemeFromLink()
   }
 
   function displayedIsEmpty() {
@@ -854,6 +870,7 @@ Item {
     for (var k in picks) { empty = false; break }
     if (empty) {
       applyVisibleSlots(true)
+      if (displayedIsEmpty()) applyThemeFromLink()
       return
     }
     applyPerScreen(picks, true)
@@ -1090,14 +1107,18 @@ Item {
     beginTransition(nextDisplayed, nextIncoming, nextOld, instant === true || displayedIsEmpty())
   }
 
-  function refreshBackground() {
-    if (hasFolder()) { shuffle(false); return }
+  function applyThemeFromLink() {
     if (!readlinkProc.running) readlinkProc.running = true
   }
 
+  function refreshBackground() {
+    if (hasUsableImages()) { shuffle(false); return }
+    applyThemeFromLink()
+  }
+
   function setBackground(path, instant) {
-    if (hasFolder()) { shuffle(instant); return }
-    applyGlobal("", path, path, instant, false)
+    if (hasUsableImages()) { shuffle(instant); return }
+    applyGlobal("", path, path, instant, true)
   }
 
   // ----------------------------------------------------------- theme colors
@@ -1124,12 +1145,12 @@ Item {
   // theme switch must still recolor the bar, so the payload is applied
   // immediately rather than being carried by a reveal that never starts.
   function transitionBackgroundWithTheme(fromPath, path, finalPath, colorsB64, shellB64) {
-    if (hasFolder()) {
+    if (hasUsableImages()) {
       setPendingTheme(colorsB64, shellB64)
       applyPendingTheme()
       return
     }
-    applyGlobal(fromPath, path, finalPath, false, true)
+    applyGlobal(fromPath, path, finalPath, true, true)
     setPendingTheme(colorsB64, shellB64)
     if (revealProgress >= 1) applyPendingTheme()
   }
@@ -1219,8 +1240,10 @@ Item {
     command: ["readlink", "-f", root.currentBackgroundLink]
     stdout: StdioCollector {
       onStreamFinished: {
-        if (root.hasFolder()) return
-        root.applyGlobal("", String(text || "").trim(), String(text || "").trim(), false, false)
+        if (root.hasUsableImages()) return
+        var path = String(text || "").trim()
+        if (!path) return
+        root.applyGlobal("", path, path, true, true)
       }
     }
   }
@@ -1241,8 +1264,8 @@ Item {
     }
 
     function transition(fromPath: string, path: string): void {
-      if (root.hasFolder()) { root.shuffle(false); return }
-      root.applyGlobal(fromPath, path, path, false, false)
+      if (root.hasUsableImages()) { root.shuffle(false); return }
+      root.applyGlobal(fromPath, path, path, true, true)
     }
 
     function themeTransition(fromPath: string, path: string, finalPath: string, colorsB64: string, shellB64: string): void {

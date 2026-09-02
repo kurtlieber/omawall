@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.6.1 (klieber fork)
+
+* Empty or missing folder falls back to the theme background instead of a black desktop.
+
 ## 1.6.0 (klieber fork)
 
 * Toggle **Different wallpaper per workspace** (Shuffling tab). Off: one picture per display.
