@@ -164,8 +164,12 @@ Item {
   readonly property string primaryDisplay: String(setting("primaryDisplay", "")).trim()
   readonly property string themeMode: String(setting("themeMode", "dark")) === "light" ? "light" : "dark"
 
-  // Stamped in by PluginRegistry; the generator script ships beside this file.
-  readonly property string sourceDir: (manifest && manifest.__sourceDir) ? String(manifest.__sourceDir) : ""
+  // PluginRegistry stamps __sourceDir, then Omarchy strips it from the
+  // injected third-party manifest. Fall back to this file's directory.
+  readonly property string sourceDir: Fit.pluginDir(
+    (manifest && manifest.__sourceDir) ? String(manifest.__sourceDir) : "",
+    Qt.resolvedUrl(".")
+  )
   // For the paths that still speak of a single folder -- the status IPC and
   // the bar tooltip. The primary display's is the one a single-folder setup
   // has anyway.
@@ -529,11 +533,8 @@ Item {
   function pathFits(path, screenName) {
     path = String(path || "")
     if (!path || badImages[path]) return false
-    var d = imageDims[path]
-    if (!d || d.length < 2) return false
     var box = screenBox(screenName)
-    if (box.w <= 0 || box.h <= 0) return false
-    return Fit.fits(Number(d[0]), Number(d[1]), box.w, box.h)
+    return Fit.pathFits(imageDims, path, box.w, box.h)
   }
 
   function slotPath(screenName, ws) {
@@ -1117,8 +1118,30 @@ Item {
   }
 
   function setBackground(path, instant) {
-    if (hasUsableImages()) { shuffle(instant); return }
-    applyGlobal("", path, path, instant, true)
+    path = expandHome(String(path || "").trim())
+    if (!path) return
+    if (!hasFolder() || !hasUsableImages()) {
+      applyGlobal("", path, path, instant, true)
+      return
+    }
+    var target = primaryScreenName()
+    try {
+      if (Hyprland.focusedMonitor && Hyprland.focusedMonitor.name)
+        target = String(Hyprland.focusedMonitor.name)
+    } catch (e) {}
+    if (!target) return
+    var names = screenNames()
+    var picks = ({})
+    for (var i = 0; i < names.length; i++)
+      picks[names[i]] = String(displayedMap[names[i]] || "")
+    picks[target] = path
+    var ws = workspaceIdForScreen(target)
+    if (perWorkspace && numberedWorkspace(ws)) {
+      setSlot(target, ws, path)
+      persistSlots()
+    }
+    applyPerScreen(picks, instant === true)
+    syncCurrentLink(picks)
   }
 
   // ----------------------------------------------------------- theme colors
@@ -1311,6 +1334,8 @@ Item {
         perDisplay: root.perDisplay,
         intervalSec: root.intervalSec,
         poolSize: root.usablePool().length,
+        dimCount: Object.keys(root.imageDims).length,
+        sourceDir: root.sourceDir,
         skipped: Object.keys(root.badImages).length,
         queued: (root.dealQueues[root.poolKeyFor(root.primaryScreenName())] || []).length,
         screens: root.displayedMap,

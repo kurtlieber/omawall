@@ -36,10 +36,33 @@ def load_fit():
             return True
         return bucket(image_w, image_h) == screen_bucket
 
+    def file_url_to_path(url):
+        url = str(url or "")
+        if url.startswith("file://"):
+            url = url[7:]
+        from urllib.parse import unquote
+
+        return unquote(url).rstrip("/")
+
+    def plugin_dir(manifest_source_dir, resolved_dot_url):
+        stamped = str(manifest_source_dir or "").rstrip("/")
+        if stamped:
+            return stamped
+        return file_url_to_path(resolved_dot_url)
+
+    def path_fits(image_dims, path, screen_w, screen_h):
+        dims = image_dims[path] if image_dims and path in image_dims else None
+        if not dims or len(dims) < 2:
+            return not image_dims
+        return fits(int(dims[0]), int(dims[1]), screen_w, screen_h)
+
     mod.aspect = aspect
     mod.bucket = bucket
     mod.covers = covers
     mod.fits = fits
+    mod.fileUrlToPath = file_url_to_path
+    mod.pluginDir = plugin_dir
+    mod.pathFits = path_fits
     return mod
 
 
@@ -87,6 +110,41 @@ class FitTests(unittest.TestCase):
         self.assertTrue(fit.fits(6000, 4000, *LAPTOP))
         self.assertFalse(fit.fits(6000, 4000, *DESK))
         self.assertFalse(fit.fits(6000, 4000, *TRAVEL))
+
+
+class EmptyDimsTests(unittest.TestCase):
+    # Omarchy strips __sourceDir from third-party manifests. If identify
+    # never runs, imageDims stays {}. Refusing every path leaves a blank desktop.
+    def test_empty_dims_allow_any_path(self):
+        self.assertTrue(fit.pathFits({}, "/wallpapers/a.jpg", *LAPTOP))
+
+    def test_known_dims_still_filter(self):
+        dims = {"/a.jpg": [3840, 2160], "/uw.jpg": [3840, 1600]}
+        self.assertTrue(fit.pathFits(dims, "/a.jpg", *LAPTOP))
+        self.assertTrue(fit.pathFits(dims, "/a.jpg", *DESK))
+        self.assertFalse(fit.pathFits(dims, "/uw.jpg", *DESK))
+        self.assertFalse(fit.pathFits(dims, "/missing.jpg", *LAPTOP))
+
+
+class FitJsParityTests(unittest.TestCase):
+    def test_js_library_has_the_same_helpers(self):
+        src = (ROOT / "Fit.js").read_text()
+        for name in ("pathFits", "pluginDir", "fileUrlToPath"):
+            self.assertIn(f"function {name}(", src)
+
+
+class PluginDirTests(unittest.TestCase):
+    def test_falls_back_when_manifest_source_dir_stripped(self):
+        self.assertEqual(
+            fit.pluginDir("", "file:///home/klieber/.config/omarchy/plugins/klieber.omawall/"),
+            "/home/klieber/.config/omarchy/plugins/klieber.omawall",
+        )
+
+    def test_prefers_stamped_source_dir(self):
+        self.assertEqual(
+            fit.pluginDir("/opt/omawall", "file:///unused/"),
+            "/opt/omawall",
+        )
 
 
 if __name__ == "__main__":

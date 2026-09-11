@@ -15,7 +15,7 @@ import sys
 def image_size(path: str) -> tuple[int, int] | None:
     try:
         out = subprocess.check_output(
-            ["identify", "-format", "%w %h", path],
+            ["identify", "-ping", "-format", "%w %h", path],
             stderr=subprocess.DEVNULL,
             text=True,
         )

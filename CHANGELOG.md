@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.6.2 (klieber fork)
+
+* Paint wallpapers again after Omarchy started stripping `__sourceDir` from third-party plugin manifests (Fit never got dimensions, so every Slot stayed empty).
+* `identify -ping` for dimension scans so a large Collection does not stall the painter.
+
 ## 1.6.1 (klieber fork)
 
 * Empty or missing folder falls back to the theme background instead of a black desktop.
