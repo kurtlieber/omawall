@@ -2,6 +2,7 @@
 
 ## 1.7.0 (klieber fork)
 
+* Read settings from the scoped shell's `barConfig`. Omarchy no longer hands third-party services `shellConfig`, so every setting (interval, per-workspace, folders) silently fell back to its default.
 * Timer and wake rotation redeal every workspace Slot on every display, not only the workspaces in view. Before, off-screen workspaces never changed, so rotation looked sporadic.
 * `refresh` / `transition` IPC and the theme and background switchers repaint the Slots instead of redealing the visible workspace.
 * Auto-rotate defaults to every 30 minutes (was off).

@@ -37,7 +37,18 @@ Item {
   // ------------------------------------------------------------- settings
 
   readonly property string pluginId: (manifest && manifest.id) || "klieber.omawall"
-  readonly property var settings: lookupSettings(shell ? shell.shellConfig : null, pluginId)
+  // Third-party services get a scoped shell with no shellConfig, only a
+  // barConfig snapshot the shell reassigns on every config write. The settings
+  // entry lives in bar.layout, so that snapshot is enough. Without this every
+  // setting silently read as its default -- including an interval of 0.
+  readonly property var settings: lookupSettings(pluginConfig(), pluginId)
+
+  function pluginConfig() {
+    if (!shell) return null
+    if (shell.shellConfig) return shell.shellConfig
+    if (shell.barConfig) return ({ bar: shell.barConfig })
+    return null
+  }
 
   readonly property bool perDisplay: setting("perDisplay", true) === true
   readonly property bool perWorkspace: setting("perWorkspace", true) === true
@@ -59,7 +70,7 @@ Item {
 
   // What the rebuild below actually watches.
   //
-  // `settings` is read out of shell.shellConfig, and the shell replaces that
+  // `settings` is read out of the shell config, and the shell replaces that
   // whole object on every write to shell.json -- by any plugin, about any
   // setting. `displayConfig` therefore arrives as a new object with identical
   // contents whenever some other widget saves a checkbox, and QML compares var
