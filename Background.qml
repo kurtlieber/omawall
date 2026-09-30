@@ -41,7 +41,7 @@ Item {
 
   readonly property bool perDisplay: setting("perDisplay", true) === true
   readonly property bool perWorkspace: setting("perWorkspace", true) === true
-  readonly property int intervalSec: Math.max(0, Number(setting("intervalSec", 0)) || 0)
+  readonly property int intervalSec: Math.max(0, Number(setting("intervalSec", 1800)) || 0)
 
   // ---------------------------------------------------- per-display config
   //
@@ -592,6 +592,7 @@ Item {
   function usedSlotPaths() {
     var out = []
     for (var n in slotMap) {
+      if (!realScreenName(n)) continue
       var row = slotMap[n]
       if (!row) continue
       for (var k in row) {
@@ -624,6 +625,7 @@ Item {
     var changed = false
     for (var i = 0; i < names.length; i++) {
       var name = names[i]
+      if (!realScreenName(name)) continue
       var cfg = configFor(name)
       var key = poolKeyFor(name)
       for (var ws = 1; ws <= 10; ws++) {
@@ -880,6 +882,48 @@ Item {
     if (autoTheme) requestTheme(primaryPick(picks))
   }
 
+  // The timed rotation. With perWorkspace on, shuffle() only redeals the
+  // workspaces in view, so every other workspace kept its picture forever and
+  // the rotation looked sporadic: it depended on which workspace happened to be
+  // showing when the timer fired. This redeals every numbered slot on every
+  // shuffling display -- what macOS does to each Space -- and paints the ones
+  // in view. The deal queue still guarantees a full pass before any repeat.
+  function rotateAll() {
+    if (!perWorkspace) { shuffle(false); return }
+    if (!hasFolder() || !hasShuffling()) return
+    if (!poolLoaded || !dimsLoaded || !slotsLoaded) return
+    var names = screenNames()
+    var dealt = []
+    for (var i = 0; i < names.length; i++) {
+      var name = names[i]
+      if (!realScreenName(name)) continue
+      var cfg = configFor(name)
+      var key = poolKeyFor(name)
+      if (cfg.mode !== "shuffle" || key === "") continue
+      for (var ws = 1; ws <= 10; ws++) {
+        // Avoid this round's picks and the slot's own outgoing image, not every
+        // image on every slot: 20 slots against a small folder would otherwise
+        // leave nothing to deal.
+        var chosen = dealFitting(key, name, dealt.concat([slotPath(name, ws)]))
+        if (!chosen) continue
+        setSlot(name, ws, chosen)
+        dealt.push(chosen)
+      }
+    }
+    persistSlots()
+    applyVisibleSlots(true)
+    var picks = ({})
+    for (var n in displayedMap) picks[n] = displayedMap[n]
+    topUpQueues(picks)
+    if (autoTheme) requestTheme(primaryPick(picks))
+  }
+
+  // Quickshell briefly reports a nameless or FALLBACK screen during startup and
+  // monitor hotplug. Dealing slots to them just burns images out of the pool.
+  function realScreenName(name) {
+    return name !== "" && name !== "FALLBACK"
+  }
+
   // The user-facing "next image". Distinct from shuffle(), which is also how a
   // pinned image and a freshly scanned folder are applied and so must still run
   // when nothing is set to shuffle.
@@ -1037,7 +1081,7 @@ Item {
     id: wakeDebounce
     interval: 400
     repeat: false
-    onTriggered: root.shuffle(false)
+    onTriggered: root.rotateAll()
   }
 
   // Turning the toggle on, or changing what the palette is derived from, should
@@ -1112,8 +1156,16 @@ Item {
     if (!readlinkProc.running) readlinkProc.running = true
   }
 
+  // Omarchy calls refresh (and the theme and background switchers exit
+  // through here) for its own reasons, not as a request for a new picture.
+  // With per-workspace slots that must repaint what the slots already hold;
+  // redealing here is what made the rotation look sporadic.
   function refreshBackground() {
-    if (hasUsableImages()) { shuffle(false); return }
+    if (hasUsableImages()) {
+      if (perWorkspace) applyVisibleSlots(true)
+      else shuffle(false)
+      return
+    }
     applyThemeFromLink()
   }
 
@@ -1287,12 +1339,18 @@ Item {
     }
 
     function transition(fromPath: string, path: string): void {
-      if (root.hasUsableImages()) { root.shuffle(false); return }
+      if (root.hasUsableImages()) { root.refreshBackground(); return }
       root.applyGlobal(fromPath, path, path, true, true)
     }
 
     function themeTransition(fromPath: string, path: string, finalPath: string, colorsB64: string, shellB64: string): void {
       root.transitionBackgroundWithTheme(fromPath, path, finalPath, colorsB64, shellB64)
+    }
+
+    // Stock pre-decodes the next theme's image here. omarchy-theme-set calls
+    // it on every theme switch; folder mode ignores theme images, so accept
+    // and drop it rather than answer "Function not found".
+    function prepare(path: string): void {
     }
 
     // Added by this clone. The queue is only reshuffled once it empties, so
@@ -1374,7 +1432,7 @@ Item {
     interval: Math.max(1, root.intervalSec) * 1000
     running: root.folderMode && root.intervalSec > 0
     repeat: true
-    onTriggered: root.shuffle(false)
+    onTriggered: root.rotateAll()
   }
 
   Timer {

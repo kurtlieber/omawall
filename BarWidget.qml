@@ -25,7 +25,7 @@ Panel {
 
   readonly property bool perDisplay: setting("perDisplay", true) === true
   readonly property bool perWorkspace: setting("perWorkspace", true) === true
-  readonly property int intervalSec: Math.max(0, Number(setting("intervalSec", 0)) || 0)
+  readonly property int intervalSec: Math.max(0, Number(setting("intervalSec", 1800)) || 0)
   readonly property bool shuffleOnWake: setting("shuffleOnWake", false) === true
   readonly property bool autoTheme: setting("autoTheme", false) === true
   readonly property string primaryDisplay: String(setting("primaryDisplay", "")).trim()

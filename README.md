@@ -9,9 +9,14 @@ It keeps every upstream feature and adds:
 
 - **Per-workspace slots** — optional (Shuffling tab: **Different wallpaper per
   workspace**, on by default). Numbered workspaces 1–10 (0 is workspace 10) each
-  remember the picture last shown on that display. Next / timer / wake / pin
-  edit the workspace you are looking at. Scratch/special workspaces have no
-  slot. Off: every workspace on a display shows the same picture.
+  remember the picture last shown on that display. The timer and wake rotate
+  every slot on every display (like macOS rotating each Space); Next and pin
+  edit the workspace you are looking at. Theme switches and Omarchy's
+  refresh/transition calls repaint the slots without redealing. Scratch/special
+  workspaces have no slot. Off: every workspace on a display shows the same
+  picture.
+- **Rotation on by default** — every 30 minutes (Shuffling tab; 0 turns it
+  off).
 - **Fit filter** — shuffle and fill skip images that would upscale, and skip
   badly wrong aspect (desk: 16:9 only; travel ultrawide only; laptop may crop
   any bucket if the pixels cover).

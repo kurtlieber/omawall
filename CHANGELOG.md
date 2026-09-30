@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.7.0 (klieber fork)
+
+* Timer and wake rotation redeal every workspace Slot on every display, not only the workspaces in view. Before, off-screen workspaces never changed, so rotation looked sporadic.
+* `refresh` / `transition` IPC and the theme and background switchers repaint the Slots instead of redealing the visible workspace.
+* Auto-rotate defaults to every 30 minutes (was off).
+* Accept the stock `background prepare` IPC that `omarchy-theme-set` now calls.
+* Skip the transient nameless / FALLBACK screens when dealing Slots.
+
 ## 1.6.2 (klieber fork)
 
 * Paint wallpapers again after Omarchy started stripping `__sourceDir` from third-party plugin manifests (Fit never got dimensions, so every Slot stayed empty).
